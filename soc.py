@@ -3,9 +3,24 @@ import asyncio
 from typing import Union, Callable
 from uuid import uuid4
 from math import ceil
+from datetime import datetime
 from threading import Thread
 
-PACKET_PART_HEADER_EXPONENT = 7
+PACKET_PART_HEADER_EXPONENT = 5  # assumes max of 99999 parts
+
+
+def pad(num: int, length: int = 2):
+    final = str(num)
+    current_len = len(final)
+    if current_len < length:
+        final = ("0" * (length - current_len)) + final
+
+    return final
+
+
+def generate_packet_id():
+    now = datetime.utcnow()
+    return f"{now.year}{pad(now.month)}{pad(now.day)}{pad(now.second)}{pad(now.microsecond,6)}"
 
 
 def encode_header(packet_id: str, packet: bytes, index: int = 0, total: int = 1):
@@ -17,8 +32,8 @@ def encode_header(packet_id: str, packet: bytes, index: int = 0, total: int = 1)
     return f"{packet_id}|{index_s}|{total_s}".encode('utf-8') + packet
 
 
-HEADER_LENGTH = len(encode_header(str(uuid4()), b''))
-MAX_PACKET_DATA = 1024 * 3
+HEADER_LENGTH = len(encode_header(generate_packet_id(), b''))
+MAX_PACKET_DATA = int(1024 * 0.5)
 SOCKET_BUFF_LENGTH = MAX_PACKET_DATA + HEADER_LENGTH
 
 
@@ -45,8 +60,8 @@ class UdpSocket:
         raw_packet, sender = self.socket.recvfrom(SOCKET_BUFF_LENGTH)
         packet_id, index, total, packet = decode_header(raw_packet)
 
-        print(
-            f"<< ID {packet_id} | Part {index + 1}/{total}          ")
+        # print(
+        #     f"<< ID {packet_id} | Part {index + 1}/{total}          ")
 
         if index == 0 and index == total:
             return packet, sender
@@ -84,19 +99,19 @@ class UdpSocket:
 
     def _send(self, packet: bytes, address: tuple[str, int]):
         if len(packet) > SOCKET_BUFF_LENGTH:
-            packet_id = str(uuid4())
+            packet_id = generate_packet_id()
             packet_size = len(packet)
             parts_total = int(ceil(packet_size / MAX_PACKET_DATA))
             parts = [packet[i * MAX_PACKET_DATA:(i + 1) * MAX_PACKET_DATA] if i <
                      parts_total - 1 else packet[i * MAX_PACKET_DATA:packet_size] for i in range(parts_total)]
             for i in range(parts_total):
-                print(
-                    f">> ID {packet_id} | Part {i + 1}/{parts_total}          ")
+                # print(
+                #     f">> ID {packet_id} | Part {i + 1}/{parts_total}          ")
                 final_packet = encode_header(
                     packet_id, parts[i], i, parts_total)
                 self.socket.sendto(final_packet, address)
         else:
-            final_packet = encode_header(str(uuid4()), packet)
+            final_packet = encode_header(generate_packet_id(), packet)
             self.socket.sendto(final_packet, address)
 
     def kill(self):
@@ -130,54 +145,3 @@ class UdpSocketWithOp(UdpSocket):
 
     def on_packet(self, packet: bytes, address: tuple[str, int], op: int):
         pass
-
-
-class SignalingServer(UdpSocketWithOp):
-    def __init__(self, address: tuple[str, int]) -> None:
-        super().__init__(address)
-        self.pending_connections = {}
-
-    def on_packet(self, packet: bytes, address: tuple[str, int], op: int):
-        try:
-            if op == UDP_OPCODES.CLIENT_SIGNALING:
-                print("Got Signalling Request")
-                data = packet.decode('utf-8')
-                user_id, waiting_for_id = data.split("|")
-                if waiting_for_id in self.pending_connections.keys():
-                    waiting_for_ip, waiting_for_port = self.pending_connections[waiting_for_id]
-                    self.send(f"{address[0]}|{address[1]}".encode(
-                        'utf-8'),
-                        (waiting_for_ip, waiting_for_port), UDP_OPCODES.SERVER_SIGNALING)
-
-                    self.send(f"{waiting_for_ip}|{waiting_for_port}".encode(
-                        'utf-8'), address, UDP_OPCODES.SERVER_SIGNALING)
-                    del self.pending_connections[waiting_for_id]
-                else:
-                    self.pending_connections[user_id] = address
-        except:
-            pass
-
-
-class SignalingClient(UdpSocketWithOp):
-    def __init__(self, my_id: str, other_id: str, my_address: tuple[str, int], server_address: tuple[str, int]) -> None:
-        super().__init__(my_address)
-        self.my_id = my_id
-        self.other_id = other_id
-        self.callbacks = []
-        self.send(f"{my_id}|{other_id}".encode('utf-8'),
-                  server_address, UDP_OPCODES.CLIENT_SIGNALING)
-        self.other_address: Union[tuple[str, int], None] = None
-
-    def add_on_packet(self, callback: Callable[[int, bytes, tuple[str, int]], None]):
-        self.callbacks.append(callback)
-
-    def on_packet(self, packet: bytes, address: tuple[str, int], op: int):
-        if op == UDP_OPCODES.SERVER_SIGNALING:
-            ip, port = packet.decode('utf-8').split("|")
-            port = int(port)
-            self.other_address = (ip, port)
-            print("Connected to", self.other_id)
-        elif op == UDP_OPCODES.CLIENT_DEBUG:
-            print(f"Debug {packet.decode('utf-8')}")
-
-        [callback(packet, address, op) for callback in self.callbacks]

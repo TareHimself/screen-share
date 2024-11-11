@@ -12,7 +12,7 @@ class SignalingServer(UdpSocketWithOp):
         try:
             if op == UDP_OPCODES.CLIENT_SIGNALING:
                 print("Got Signalling Request")
-                data = packet.decode('utf-8')
+                data = packet.decode('utf-8')   
                 user_id, waiting_for_id = data.split("|")
                 if waiting_for_id in self.pending_connections.keys():
                     waiting_for_ip, waiting_for_port = self.pending_connections[waiting_for_id]

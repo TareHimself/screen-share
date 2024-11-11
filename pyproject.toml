@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "screen-share"
+version = "0.1.0"
+description = ""
+authors = ["Tare Ebelo <75279482+TareHimself@users.noreply.github.com>"]
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.10"
+poethepoet = "^0.20.0"
+numpy = "^1.26.4"
+opencv-python = "^4.9.0.80"
+pygame = "^2.5.2"
+pywin32 = "^306"
+
+[tool.poe.tasks]
+uninstall-torch = "python -m pip uninstall -y torch torchvision"
+install-torch-cuda = "python -m pip install torch==2.0.0 torchvision --index-url https://download.pytorch.org/whl/cu117"
+build-ui = "npm install && npm run build"
+run-server = "python server.py"
+force-cuda = ["uninstall-torch","install-torch-cuda"]
+build-docker = "docker build -f Dockerfile . -t tarehimself/manga-translator"
+run-docker = "docker run --gpus all -p 5000:5000 tarehimself/manga-translator"
+
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

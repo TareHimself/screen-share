@@ -59,7 +59,7 @@ class UdpSocket:
     def get_complete_packet(self):
         raw_packet, sender = self.socket.recvfrom(SOCKET_BUFF_LENGTH)
         packet_id, index, total, packet = decode_header(raw_packet)
-
+        "<PACKET_BOUNDRY>Hello world<PACKET_BOUNDTRY/>"
         # print(
         #     f"<< ID {packet_id} | Part {index + 1}/{total}          ")
 
